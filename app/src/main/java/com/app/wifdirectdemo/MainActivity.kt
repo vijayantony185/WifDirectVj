@@ -2,6 +2,7 @@ package com.app.wifdirectdemo
 
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -14,11 +15,15 @@ import android.net.wifi.p2p.WifiP2pManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -73,6 +78,11 @@ class MainActivity : AppCompatActivity(),PeersListInterface {
         addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
     }
 
+    //For speechListerner
+    private lateinit var speechRecognizer: SpeechRecognizer
+    private lateinit var listeningDialog: AlertDialog
+    private lateinit var dialogTitle: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -89,6 +99,7 @@ class MainActivity : AppCompatActivity(),PeersListInterface {
         initUI()
         initActionButtons()
         onClickEvents()
+        initSpeechRecognizer()
     }
 
     private fun initUI(){
@@ -379,5 +390,74 @@ class MainActivity : AppCompatActivity(),PeersListInterface {
         if (isStreaming && audioSocket != null){
             audioSocket?.close()
         }
+    }
+
+    fun initSpeechRecognizer(){
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+
+        // Create a custom AlertDialog for listening state
+        val dialogView = layoutInflater.inflate(R.layout.dialog_speechlisterner, null)
+        dialogTitle = dialogView.findViewById(R.id.dialogTitle)
+
+        listeningDialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(false) // Prevent dismissing manually
+            .create()
+
+        speechRecognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                updateDialogTitle("Ready to listen...")
+                listeningDialog.show()
+            }
+
+            override fun onBeginningOfSpeech() {
+                updateDialogTitle("Listening...")
+            }
+
+            override fun onRmsChanged(rmsdB: Float) {
+                // Optional: You can use rmsdB to update UI dynamically
+            }
+
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {
+                updateDialogTitle("Processing...")
+            }
+
+            override fun onError(error: Int) {
+                listeningDialog.dismiss()
+                Toast.makeText(this@MainActivity, "Error occurred: $error", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onResults(results: Bundle?) {
+                listeningDialog.dismiss()
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    val recognizedText = matches[0]
+                    Toast.makeText(this@MainActivity, "$recognizedText", Toast.LENGTH_LONG).show()
+                    CoroutineScope(Dispatchers.IO).launch {
+                        sendMessageToServer("$recognizedText", tvResponseFromServer)
+                    }
+                }
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        findViewById<Button>(R.id.btnStartSpeech).setOnClickListener {
+            startSpeechRecognizer()
+        }
+    }
+
+    private fun updateDialogTitle(title: String) {
+        dialogTitle.text = title
+    }
+
+    fun startSpeechRecognizer(){
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US") // Specify the language
+        }
+        speechRecognizer.startListening(intent)
     }
 }
