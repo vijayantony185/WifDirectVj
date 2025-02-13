@@ -83,6 +83,12 @@ class MainActivity : AppCompatActivity(),PeersListInterface {
     private lateinit var listeningDialog: AlertDialog
     private lateinit var dialogTitle: TextView
 
+    //BiDirectional
+    private var mSocket: Socket? = null
+    private var mWriter: PrintWriter? = null
+    private var mReader: BufferedReader? = null
+    private var isRunning = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -222,6 +228,7 @@ class MainActivity : AppCompatActivity(),PeersListInterface {
         val groupOwnerIp = info.groupOwnerAddress.hostAddress
         tvGroupOwnerIP.setText(groupOwnerIp.toString())
         host = groupOwnerIp.toString()
+        connectToServer(tvResponseFromServer)
         Log.d("Client", "Connected to Group Owner at IP: $groupOwnerIp")
         // Proceed with your connection logic here
     }
@@ -260,7 +267,7 @@ class MainActivity : AppCompatActivity(),PeersListInterface {
         }
     }
 
-    fun initActionButtons(){
+  /*  fun initActionButtons(){
         findViewById<Button>(R.id.btnLeft).setOnClickListener {
             if (host != null){
                 CoroutineScope(Dispatchers.IO).launch {
@@ -295,6 +302,35 @@ class MainActivity : AppCompatActivity(),PeersListInterface {
                     sendMessageToServer("enter", tvResponseFromServer)
                 }
             }
+        }
+        findViewById<Button>(R.id.btnStartRecording).setOnClickListener {
+            isStreaming = true
+            Thread { sendAudioToServer(tvResponseFromServer) }.start()
+        }
+
+        findViewById<Button>(R.id.btnStopRecording).setOnClickListener {
+            isStreaming = false
+            if (audioSocket != null){
+                audioSocket?.close()
+            }
+        }
+    }*/
+
+    fun initActionButtons(){
+        findViewById<Button>(R.id.btnLeft).setOnClickListener {
+           sendMessage("left")
+        }
+        findViewById<Button>(R.id.btnRight).setOnClickListener {
+            sendMessage("right")
+        }
+        findViewById<Button>(R.id.btnUp).setOnClickListener {
+            sendMessage("up")
+        }
+        findViewById<Button>(R.id.btnDown).setOnClickListener {
+            sendMessage("down")
+        }
+        findViewById<Button>(R.id.btnSubmit).setOnClickListener {
+            sendMessage("enter")
         }
         findViewById<Button>(R.id.btnStartRecording).setOnClickListener {
             isStreaming = true
@@ -459,5 +495,44 @@ class MainActivity : AppCompatActivity(),PeersListInterface {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US") // Specify the language
         }
         speechRecognizer.startListening(intent)
+    }
+
+
+    fun connectToServer(responseTextView: TextView) {
+        val port = 8888
+        Thread {
+            try {
+                mSocket = Socket(host, port)
+                mWriter = PrintWriter(mSocket!!.getOutputStream(), true)
+                mReader = BufferedReader(InputStreamReader(mSocket!!.getInputStream()))
+
+                while (isRunning) {
+                    val serverMessage = mReader?.readLine()
+                    if (serverMessage != null) {
+                        runOnUiThread {
+                            responseTextView.text = "Server: $serverMessage"
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                runOnUiThread {
+                    responseTextView.text = "Error: ${e.message}"
+                }
+            }
+        }.start()
+    }
+
+    fun sendMessage(message: String) {
+        Thread {
+            mWriter?.println(message)
+        }.start()
+    }
+
+    fun closeConnection() {
+        isRunning = false
+        mWriter?.close()
+        mReader?.close()
+        mSocket?.close()
     }
 }
